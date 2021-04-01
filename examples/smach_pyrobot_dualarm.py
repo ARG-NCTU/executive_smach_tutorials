@@ -9,7 +9,9 @@ from pyrobot import Robot
 ur5_arm = 'ur5'
 vx300s_arm = 'vx300s'
 
-# define state GoHome
+# define state Init
+
+
 class Init(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=['init_all'])
@@ -23,92 +25,105 @@ class Init(smach.State):
 
         return 'init_all'
 
-class Perception_obj(smach.State):
+# define state go_home
+class Move_go_home(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['have_objects','failure'])
+        smach.State.__init__(self, outcomes=['movement'])
 
     def execute(self, userdata):
+        rospy.loginfo('Move_go_home')
+        time.sleep(1)
 
+        return 'movement'
+
+
+class Perception_obj(smach.State):
+    def __init__(self):
+        smach.State.__init__(
+            self, outcomes=['have_object_bn_0', 'have_object_bn_1', 'have_object', 'empty'])
+
+    def execute(self, userdata):
         rospy.loginfo('Perception_obj')
 
-        return 'have_objects'
+        if have_object_bn :
+            return 'have_object_bn_0'
+        elif have_object_bn :
+            return 'have_object_bn_1'
+        elif have_object :
+            return 'have_object'
+        else:
+            return 'empty'
 
 # define state Move
-class Move_vx300s_grasp(smach.State):
+
+class Move_vx300s_pick(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['success','failure'])
+        smach.State.__init__(self, outcomes=['success', 'failure'])
 
     def execute(self, userdata):
         target_joint = [0, -1.7, -1.6, 0.0015, -1.110, -0.006]
         global vx300s_arm
 
-        rospy.loginfo('Move_vx300s_grasp')
+        rospy.loginfo('Move_vx300s_pick')
         vx300s_arm.arm.set_joint_positions(target_joint, plan=True)
         time.sleep(1)
-        vx300s_arm.arm.go_home()
 
 #        vx300s_arm.close_gripper()
         time.sleep(1)
 
-        return 'success'
-        return 'failure'
+        if if_grasp.success :
+            return 'success'
+        else:
+            return 'failure'
 
-# define state Move
-class Move_vx300s_hold(smach.State):
+
+class Move_ur5_pick(smach.State):
+    def __init__(self):
+        smach.State.__init__(self, outcomes=['success', 'failure'])
+        self.counter = True
+
+    def execute(self, userdata):
+        joint = [-0.03938514391054326, -1.3492568174945276, 1.8922514915466309, - \
+            2.668490235005514, -1.6633527914630335, 0.23534096777439117]
+
+        rospy.loginfo('Move_ur5_pick')
+        ur5_arm.arm.set_joint_positions(joint, plan=True)
+        time.sleep(1)
+
+#        robotiq.close_gripper()
+        time.sleep(1)
+
+        if if_grasp.success :
+            return 'success'
+        else:
+            return 'failure'
+
+
+class Move_regrasping(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=['movement'])
 
     def execute(self, userdata):
-        target_joint_1 = [0, 0, 0.6, -0.4, 0]
-
-        rospy.loginfo('Move_vx300s_hold')
-#        vx300s_arm.arm.set_joint_positions(target_joint_1, plan=True)
+        rospy.loginfo('Move_regrasping')
         time.sleep(1)
 
         return 'movement'
 
-class Move_ur5_grasp(smach.State):
+
+class Move_placing(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['success','failure'])
-        self.counter = 0
+        smach.State.__init__(self, outcomes=['movement'])
 
     def execute(self, userdata):
-        joint = [-0.03938514391054326, -1.3492568174945276, 1.8922514915466309, -2.668490235005514, -1.6633527914630335, 0.23534096777439117]
-
-        rospy.loginfo('Move_ur5_grasp')
-        ur5_arm.arm.set_joint_positions(joint, plan=True)
+        rospy.loginfo('Move_placing')
         time.sleep(1)
 
-#        vx300s_arm.open_gripper()
-        time.sleep(1)
-
-        return 'success'
-        return 'failure'
-
-class Move_ur5_hold(smach.State):
-    def __init__(self):
-        smach.State.__init__(self, outcomes=['movement','back'])
-        self.counter = 0
-
-    def execute(self, userdata):
-        joint = [-0.008826557789937794, -1.526635471974508, 1.9602179527282715, -2.5408323446856897, -1.6822107473956507, 0.25439926981925964]
-
-        rospy.loginfo('Move_ur5_hold')
-        ur5_arm.arm.set_joint_positions(joint, plan=True)
-        time.sleep(1)
-
-#        vx300s_arm.open_gripper()
-        time.sleep(1)
-
-        if self.counter < 2:
-            self.counter += 1
-            return 'back'
-        else:
-            return 'movement'
+        return 'movement'
 
 # main
+
 def main():
-#    rospy.init_node('smach_example_state_machine')
+    rospy.init_node('smach_example_state_machine')
 
     # Create a SMACH state machine
     sm = smach.StateMachine(outcomes=['END'])
@@ -116,14 +131,17 @@ def main():
     # Open the container
     with sm:
         # Add states to the container
-        smach.StateMachine.add('Init', Init(), transitions={'init_all':'Move_vx300s_grasp'})
-        smach.StateMachine.add('Move_vx300s_grasp', Move_vx300s_grasp(), transitions={'success':'Move_vx300s_hold','failure':'Move_vx300s_grasp'})
-        smach.StateMachine.add('Move_vx300s_hold', Move_vx300s_hold(), transitions={'movement':'Move_ur5_grasp'})
-        smach.StateMachine.add('Move_ur5_grasp', Move_ur5_grasp(), transitions={'success':'Move_ur5_hold','failure':'Move_ur5_grasp'})
-        smach.StateMachine.add('Move_ur5_hold', Move_ur5_hold(), transitions={'back':'Init','movement':'END'})
+        smach.StateMachine.add('Init', Init(), transitions={'init_all': 'Move_go_home'})
+        smach.StateMachine.add('Move_go_home', Move_go_home(), transitions={'movement': 'Perception_obj'})
+        smach.StateMachine.add('Perception_obj', Perception_obj(), transitions={'empty': 'END', 'have_object':'Move_regrasping', 'have_object_bn_0':'Move_ur5_pick', 'have_object_bn_1':'Move_vx300s_pick'})
+        smach.StateMachine.add('Move_vx300s_pick', Move_vx300s_pick(), transitions={'success': 'Move_placing', 'failure':'Move_vx300s_pick'})
+        smach.StateMachine.add('Move_ur5_pick', Move_ur5_pick(), transitions={'success': 'Move_placing', 'failure':'Move_ur5_pick'})
+        smach.StateMachine.add('Move_regrasping', Move_regrasping(), transitions={'movement': 'Perception_obj'})
+        smach.StateMachine.add('Move_placing', Move_placing(), transitions={'movement': 'Move_go_home'})
 
     # Create and start the introspection server
-    sis = smach_ros.IntrospectionServer('my_smach_introspection_server', sm, '/SM_ROOT')
+    sis = smach_ros.IntrospectionServer(
+        'my_smach_introspection_server', sm, '/SM_ROOT')
     sis.start()
 
     # Execute SMACH plan
@@ -132,6 +150,7 @@ def main():
     # Wait for ctrl-c to stop the application
     rospy.spin()
     sis.stop()
+
 
 if __name__ == '__main__':
     main()
