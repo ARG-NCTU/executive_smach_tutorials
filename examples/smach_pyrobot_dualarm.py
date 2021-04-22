@@ -39,37 +39,46 @@ class Move_go_home(smach.State):
 class BN_detection(smach.State):
     def __init__(self):
         smach.State.__init__(
-            self, outcomes=['have_object_bn', 'empty'])
+            self, outcomes=['have_bn', 'empty'])
 
     def execute(self, userdata):
         rospy.loginfo('BN_detection')
 
-        if have_object_bn :
-            return 'have_object_bn'
+        if have_bn :
+            return 'have_bn'
         else:
             return 'empty'
 
-
-class Pose_estimate(smach.State):
+class Pose_estimate_BN(smach.State):
     def __init__(self):
         smach.State.__init__(
-            self, outcomes=['have_object_pose_with_BN', 'have_object_pose', 'empty'])
+            self, outcomes=['have_object_pose_with_BN', 'empty'])
 
     def execute(self, userdata):
-        rospy.loginfo('Pose_estimate')
+        rospy.loginfo('Pose_estimate_BN')
 
         if have_object_pose_with_BN:
             return 'have_object_pose_with_BN'
-        elif have_object_pose :
+        else:
+            return 'empty'
+
+class Pose_estimate_object(smach.State):
+    def __init__(self):
+        smach.State.__init__(
+            self, outcomes=['have_object_pose', 'empty'])
+
+    def execute(self, userdata):
+        rospy.loginfo('Pose_estimate_object')
+
+        if have_object_pose:
             return 'have_object_pose'
         else:
             return 'empty'
 
-
 # define state Move
 class Move_vx300s_pick_to_tote(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['success_BN', 'success_noBN', 'failure'])
+        smach.State.__init__(self, outcomes=['success', 'failure'])
 
     def execute(self, userdata):
         target_joint = [0, -1.7, -1.6, 0.0015, -1.110, -0.006]
@@ -79,16 +88,13 @@ class Move_vx300s_pick_to_tote(smach.State):
         vx300s_arm.arm.set_joint_positions(target_joint, plan=True)
         time.sleep(1)
 
-        vx300s_arm.gripper.close()
+        #vx300s_arm.gripper.close()
         time.sleep(1)
 
-        if success_BN :
-            return 'success_BN'
-        elif success_noBN:
-            return 'success_noBN'
+        if success :
+            return 'success'
         else:
             return 'failure'
-
 
 class Move_ur5_pick(smach.State):
     def __init__(self):
@@ -111,20 +117,44 @@ class Move_ur5_pick(smach.State):
         else:
             return 'failure'
 
-
-class OnHand_Pose_estimate(smach.State):
+class OnHand_BN_detection(smach.State):
     def __init__(self):
         smach.State.__init__(
-            self, outcomes=['have_object_pose_with_BN', 'have_object_pose'])
+            self, outcomes=['have_bn', 'empty'])
 
     def execute(self, userdata):
-        rospy.loginfo('OnHand_Pose_estimate')
+        rospy.loginfo('OnHand_BN_detection')
+
+        if have_bn :
+            return 'have_bn'
+        else:
+            return 'empty'
+
+class OnHand_Pose_estimate_BN(smach.State):
+    def __init__(self):
+        smach.State.__init__(
+            self, outcomes=['have_object_pose_with_BN', 'empty'])
+
+    def execute(self, userdata):
+        rospy.loginfo('OnHand_Pose_estimate_BN')
 
         if have_object_pose_with_BN:
             return 'have_object_pose_with_BN'
-        elif have_object_pose :
-            return 'have_object_pose'
+        else:
+            return 'empty'
 
+class OnHand_Pose_estimate_object(smach.State):
+    def __init__(self):
+        smach.State.__init__(
+            self, outcomes=['have_object_pose', 'empty'])
+
+    def execute(self, userdata):
+        rospy.loginfo('OnHand_Pose_estimate_object')
+
+        if have_object_pose:
+            return 'have_object_pose'
+        else:
+            return 'empty'
 
 class Move_ur5_regrasping(smach.State):
     def __init__(self):
@@ -160,12 +190,19 @@ def main():
         # Add states to the container
         smach.StateMachine.add('Init', Init(), transitions={'init_all':'Move_go_home'})
         smach.StateMachine.add('Move_go_home', Move_go_home(), transitions={'movement':'BN_detection'})
-        smach.StateMachine.add('BN_detection', BN_detection(), transitions={'empty':'Pose_estimate', 'have_object_bn':'Pose_estimate'})
-        smach.StateMachine.add('Pose_estimate', Pose_estimate(), transitions={'empty':'END', 'have_object_pose':'Move_vx300s_pick_to_tote', 'have_object_pose_with_BN':'Move_vx300s_pick_to_tote'})
-        smach.StateMachine.add('Move_vx300s_pick_to_tote', Move_vx300s_pick_to_tote(), transitions={'success_BN':'Move_ur5_pick', 'success_noBN':'OnHand_Pose_estimate', 'failure':'Pose_estimate'})
-        smach.StateMachine.add('OnHand_Pose_estimate', OnHand_Pose_estimate(), transitions={'have_object_pose_with_BN':'Move_ur5_pick', 'have_object_pose':'Move_ur5_regrasping'})
-        smach.StateMachine.add('Move_ur5_pick', Move_ur5_pick(), transitions={'success':'Move_ur5_placing', 'failure':'OnHand_Pose_estimate'})
-        smach.StateMachine.add('Move_ur5_regrasping', Move_ur5_regrasping(), transitions={'movement':'OnHand_Pose_estimate'})
+
+        smach.StateMachine.add('BN_detection', BN_detection(), transitions={'empty':'Pose_estimate_object', 'have_bn':'Pose_estimate_BN'})
+        smach.StateMachine.add('Pose_estimate_BN', Pose_estimate_BN(), transitions={'empty':'END', 'have_object_pose_with_BN':'Move_vx300s_pick_to_tote'})
+        smach.StateMachine.add('Pose_estimate_object', Pose_estimate_object(), transitions={'empty':'END', 'have_object_pose':'Move_vx300s_pick_to_tote'})
+
+        smach.StateMachine.add('Move_vx300s_pick_to_tote', Move_vx300s_pick_to_tote(), transitions={'success':'OnHand_BN_detection', 'failure':'BN_detection'})
+
+        smach.StateMachine.add('OnHand_BN_detection', OnHand_BN_detection(), transitions={'empty':'OnHand_Pose_estimate_object', 'have_bn':'OnHand_Pose_estimate_BN'})
+        smach.StateMachine.add('OnHand_Pose_estimate_BN', OnHand_Pose_estimate_BN(), transitions={'empty':'END', 'have_object_pose_with_BN':'Move_ur5_pick'})
+        smach.StateMachine.add('OnHand_Pose_estimate_object', OnHand_Pose_estimate_object(), transitions={'empty':'END', 'have_object_pose':'Move_ur5_regrasping'})
+
+        smach.StateMachine.add('Move_ur5_pick', Move_ur5_pick(), transitions={'success':'Move_ur5_placing', 'failure':'OnHand_BN_detection'})
+        smach.StateMachine.add('Move_ur5_regrasping', Move_ur5_regrasping(), transitions={'movement':'OnHand_BN_detection'})
         smach.StateMachine.add('Move_ur5_placing', Move_ur5_placing(), transitions={'movement':'Move_go_home'})
 
     # Create and start the introspection server
